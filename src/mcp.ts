@@ -34,9 +34,10 @@ import { healthMaintenance } from './maintenance.ts';
 
 // Allow-list of types; the patient element is always set (and overridden) so an agent can't write to another patient.
 const PATIENT_FIELD: Record<string, string> = { AllergyIntolerance: 'patient', Immunization: 'patient' };
-const SUBJECT_TYPES = ['Observation', 'Condition', 'MedicationStatement', 'MedicationRequest', 'DiagnosticReport', 'Procedure', 'Encounter'];
-// R4 Encounter and DiagnosticReport have no note: their link to the file is meta.source only.
-const NO_NOTE = new Set(['Encounter', 'DiagnosticReport']);
+// MedicationAdministration: a dose a hospital record says was given. DocumentReference: a note's text. Communication: a portal message.
+const SUBJECT_TYPES = ['Observation', 'Condition', 'MedicationStatement', 'MedicationRequest', 'MedicationAdministration', 'DiagnosticReport', 'Procedure', 'Encounter', 'DocumentReference', 'Communication'];
+// R4 Encounter, DiagnosticReport and DocumentReference have no note: their link to the file is meta.source only.
+const NO_NOTE = new Set(['Encounter', 'DiagnosticReport', 'DocumentReference']);
 // FHIR date, or dateTime with seconds and zone.
 const DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2}))?$/;
 const TYPES: Record<string, string> = { '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.tif': 'image/tiff', '.tiff': 'image/tiff' };
@@ -62,6 +63,9 @@ export async function importExtracted(
   if (bad !== undefined) throw new GaError('every resource needs a resourceType');
   const unsupported = resources.find((r) => !PATIENT_FIELD[r.resourceType] && !SUBJECT_TYPES.includes(r.resourceType));
   if (unsupported) throw new GaError(`unsupported resourceType: ${unsupported.resourceType}`);
+  // An extracted note is its text, inline: never a pointer to a file or an address, and never another kind of content.
+  const pointer = resources.find((r) => r.resourceType === 'DocumentReference' && !((r as DocumentReference).content?.length && (r as DocumentReference).content.every((c) => c.attachment?.data && !c.attachment.url && /^text\/plain\b/i.test(c.attachment.contentType ?? ''))));
+  if (pointer) throw new GaError('an extracted DocumentReference must carry its text inline (text/plain data, no url)');
   // Only document types: a prompt-injected "document" must not make GA store an arbitrary local file.
   const contentType = TYPES[extname(sourceFile).toLowerCase()];
   if (!contentType) throw new GaError(`sourceFile must be a PDF or image (${Object.keys(TYPES).join(', ')})`);
@@ -123,7 +127,7 @@ export function untrusted(r: Resource): Resource {
   return out as Resource;
 }
 
-export const EXTRACT_TYPES = ['Observation', 'Condition', 'MedicationStatement', 'MedicationRequest', 'DiagnosticReport', 'Procedure', 'Encounter', 'AllergyIntolerance', 'Immunization'] as ResourceType[];
+export const EXTRACT_TYPES = ['Observation', 'Condition', 'MedicationStatement', 'MedicationRequest', 'MedicationAdministration', 'DiagnosticReport', 'Procedure', 'Encounter', 'AllergyIntolerance', 'Immunization', 'DocumentReference', 'Communication'] as ResourceType[];
 export const EXTRACTED_NOTE = /^Extracted from DocumentReference\/(\S+)$/;
 
 // The source document of an extracted record: Observation.derivedFrom, the "Extracted from" note, else (Encounter,
