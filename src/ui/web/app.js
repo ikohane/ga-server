@@ -49,8 +49,9 @@ function prepare(d) {
     current: d.medications.filter((m) => m.current).map((m) => ({ ...m, d: toDay(m.t), d2: toDay(m.end) })), past, pastRows: rows.length,
     labs, restLabs, labTicks: [...restLabs.flatMap((s) => s.points.map((p) => toDay(p[0]))), ...d.otherLabs.map(toDay)],
     wearables: d.wearables.map((w) => {
+      // A reading with one value arrives with null in the second place (JSON has no undefined): null, like undefined, means no second value.
       const pts = w.points.map((p) => [toDay(p[0]), p[1], p[2]]), clinic = w.clinic.map((p) => [toDay(p[0]), p[1], p[2], p[3]]);
-      const vals = [...pts, ...clinic].flatMap((p) => (p[2] === undefined ? [p[1]] : [p[1], p[2]])).sort((a, b) => a - b);
+      const vals = [...pts, ...clinic].flatMap((p) => (p[2] == null ? [p[1]] : [p[1], p[2]])).sort((a, b) => a - b);
       const q = (f) => vals[Math.min(vals.length - 1, Math.floor(f * vals.length))];
       return { ...w, pts, clinic, lo: w.draw === 'bars' ? 0 : q(0.01), hi: q(0.99) };
     }),
@@ -202,7 +203,7 @@ function wearable(w) {
       const i = Math.round(X(p[0])) - x0;
       if (i < 0 || i >= n) continue;
       if (p[1] < lo[i]) lo[i] = p[1]; if (p[1] > hi[i]) hi[i] = p[1]; sum[i] += p[1]; cnt[i]++;
-      if (p[2] !== undefined) { if (p[2] < lo2[i]) lo2[i] = p[2]; if (p[2] > hi2[i]) hi2[i] = p[2]; sum2[i] += p[2]; }
+      if (p[2] != null) { if (p[2] < lo2[i]) lo2[i] = p[2]; if (p[2] > hi2[i]) hi2[i] = p[2]; sum2[i] += p[2]; }
     }
     w.bins = { x0, lo, hi, sum, cnt, sum2 };
     ctx.lineWidth = 1;
@@ -228,8 +229,8 @@ function wearable(w) {
       const x = X(p[0]);
       if (!inPlot(x)) continue;
       dot(x, Y(p[1]), 3, K.ink, true);
-      if (p[2] !== undefined) dot(x, Y(p[2]), 3, K.ink, true);
-      hit(x - 4, y, 8, h, { d: p[0], id: p[3], label: `${w.label} (clinic)`, value: p[2] === undefined ? `${p[1]} ${w.unit}` : `${p[1]}/${p[2]} ${w.unit}` }, 'Clinic reading');
+      if (p[2] != null) dot(x, Y(p[2]), 3, K.ink, true);
+      hit(x - 4, y, 8, h, { d: p[0], id: p[3], label: `${w.label} (clinic)`, value: p[2] == null ? `${p[1]} ${w.unit}` : `${p[1]}/${p[2]} ${w.unit}` }, 'Clinic reading');
     }
     if (latest !== undefined) {
       const m = sum[latest] / cnt[latest], text = w.draw === 'range' ? `${Math.round(m)}/${Math.round(sum2[latest] / cnt[latest])}` : w.key === 'steps' ? Math.round(m).toLocaleString() : String(Math.round(m * 10) / 10);
