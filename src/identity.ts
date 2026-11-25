@@ -27,6 +27,18 @@ export const sha256 = (s: string | Buffer): string => createHash('sha256').updat
 export const APPLE = 'urn:ga-server:id:apple-health';
 export const TAG = 'urn:ga-server:tag';
 export const SRC_DATE = 'urn:ga-server:ext:source-date';
+// Echo and ECG measurements: Epic files them under category "laboratory" next to its own section category (Echo, ECG).
+// They are measurements of a cardiology study, not lab results; their report (DiagnosticReport, category Cardiology) lists them.
+const CARDIAC: [RegExp, 'echo' | 'ecg'][] = [[/^echo(cardiogra(phy|m))?$/i, 'echo'], [/^(ecg|ekg|electrocardiogra(m|phy))$/i, 'ecg']];
+export function cardiacStudy(r: { category?: { text?: string; coding?: { code?: string; display?: string }[] }[] }): 'echo' | 'ecg' | undefined {
+  for (const c of r.category ?? []) {
+    for (const s of [c.text, ...(c.coding ?? []).flatMap((x) => [x.code, x.display])]) {
+      const hit = s && CARDIAC.find(([re]) => re.test(s.trim()));
+      if (hit) return hit[1];
+    }
+  }
+  return undefined;
+}
 export const hasTag = (r: Resource, code: string) => !!r.meta?.tag?.some((t) => t.system === TAG && t.code === code);
 // From a hospital source (EHI export, C-CDA, portal sync, or Apple's copy of a hospital record). A PDF or photo does not say where a reading was taken.
 export const isClinic = (r: Resource) => ['src-ehi', 'src-ccda', 'src-smart', 'src-fhir-export', 'src-dicom', 'src-apple-clinical'].some((c) => hasTag(r, c));
