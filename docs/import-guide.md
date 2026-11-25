@@ -62,7 +62,17 @@ Several export files of one hospital: import them **oldest first**, newest last.
 
 `ga import <folder>`. Point at the folder that holds `DICOMDIR`, which is often one level below the disc's top folder. One `ImagingStudy` per study, the encapsulated PDF as a document, the folder archived. No images are shown.
 
-### C-CDA, Epic EHI export, PDFs and photos, portal sync
+### C-CDA (Epic portal download, "IHE_XDM" folder)
+
+`ga import <folder>`, pointing at the folder that holds the `DOC0001.XML ...` files (`IHE_XDM/<name>/`); `METADATA.XML` is skipped by design. One import per hospital.
+
+- Before importing, read the patient named in every document (`recordTarget`): a download bundle can hold several people's folders (lesson 21). One GA install holds one person.
+- Run it a second time only after a code fix: records rejected the first time are created, the rest are skipped or updated (lessons 17 to 19).
+- The report's `notImported` lists what the converter left out, by section and reason. "observation without a code" under Results is Epic's own result-type marker (no test name, no value), not a result. Whole sections it does not read (Administered Medications, Medications at Time of Discharge, Discharge Instructions, Admitting Diagnoses, Ordered Prescriptions) and planned-test detail in Plan of Treatment are real content: name them to the person with their counts.
+- `patient demographic conflict: name` on the error stream means a later document spells the name differently (a middle name present or absent); the first spelling is kept. `source id collision` means two entries of one document share an id and differ; both are kept.
+- Two hospitals' exports use the same file names, which once hid most unmapped terms from review (lesson 20).
+
+### Epic EHI export, PDFs and photos, portal sync
 
 Follow AGENTS.md. No lessons are recorded for them here yet; add them as they come.
 
@@ -280,3 +290,94 @@ The reliable way is to import the same original sources on the other server, fol
 - **Cause**: the older file carried each report's text as results (`valueString` of an Observation named Narrative or Impression, ordered under the report's name). The stored report, first written from Apple's copy, names those results by `display` only and was not rewritten, so the text arrives as new Observations that nothing links to the report.
 - **What to do**: before importing, list for each file which reports have an attachment or text results, by report id; a file that is older overall can still be the only one with a given text. After importing, join text results to a link-only report by day and order name, and say the join was made that way. An endoscopy report that a Procedure names in `report` belongs with that procedure, not among imaging studies.
 - **Status**: fixed in code for the chronology page (`record` in `src/ui/detail.ts`; `buildTimeline` folds a procedure's report into the procedure). `notes_search` finds the text as "report text: Narrative (<order>)".
+
+### 17. A reference range without a plain number rejects the lab result
+
+- **Provenance**: Epic portal C-CDA download (seen at two hospitals' Epic portals). Not checked: C-CDA from other vendors; Epic FHIR exports carry ranges differently and were unaffected.
+- **Data type**: lab Observation with a `referenceRange`.
+- **Symptom**: `invalid Observation/Observation.referenceRange[0]` on the error stream, 7 to 47 per hospital folder; the results missing were ordinary ones (WBC, platelets, AST, ALT, TSH, eGFR, tissue transglutaminase).
+- **Cause**: Epic writes a range bound three ways the converter did not read: a unit that is not UCUM as `nullFlavor="OTH"` with the number in `translation/@value` and the unit in `originalText` ("38 - 234 IU/L"); an open bound as `nullFlavor="NINF"` or `"PINF"` ("<5 mcg/dL"); a range that is only text ("Negative", a growth-chart name). Each became a quantity without a number, or a range with no low, high or text, which FHIR forbids, and the whole result was rejected.
+- **What to do**: nothing at import now. If the message appears again, convert the folder without storing and list the range shapes that fail before touching the data.
+- **Status**: fixed in code (`mapIntervalBound`, `mapReferenceRange` in `vendor/medplum-ccda/ccda-to-fhir.ts`, PATCHES row 57; the range as written is now also kept in `referenceRange.text`). Checked after the fix: all four folders convert with no invalid range.
+
+### 18. Results below or above a limit were dropped
+
+- **Provenance**: Epic portal C-CDA download (the same two hospitals' portals).
+- **Data type**: lab Observation whose value is an interval (`IVL_PQ`, `IVL_REAL`): "<0.2 mg/dL", ">90".
+- **Symptom**: `notImported` rows "IVL_PQ value not converted" and "IVL_REAL value not converted" under Results (4 to 16 per folder); the result was stored with no value.
+- **Cause**: the converter read only single numbers.
+- **What to do**: nothing at import now. A `notImported` reason ending "value not converted" always names a real result: find which.
+- **Status**: fixed in code (`mapIntervalValue`, same file and PATCHES row): one bound becomes a value with a comparator (`<`, `<=`, `>`, `>=`), two a range. `lab_results` and the chronology page already show comparators (lesson 9).
+
+### 19. Pathology text arrives as encoded RTF
+
+- **Provenance**: Epic portal C-CDA download; seen at one of two hospitals, the other's export had none.
+- **Data type**: Observation results of a surgical pathology report: Final Diagnosis, Clinical Information, Gross Description, Disclaimer, Note.
+- **Symptom**: `Unhandled observation value type: ED (text/rtf, B64)` on the error stream and "ED value not converted" in `notImported`; the pathology report had a title and no diagnosis.
+- **Cause**: the text is carried only as base64 RTF in the value. After decoding, 3 gross descriptions were still rejected (`invalid Observation/Observation.value[x]`): they held a no-break space or a control character, which a FHIR string may not.
+- **What to do**: nothing at import now. Read one stored Final Diagnosis after an import to confirm it is text (section 7, step 5).
+- **Status**: fixed in code (`rtfToText` option of the converter, given GA's reader in `convertCcdaLocal`, `src/ccda.ts`; PATCHES row 58). Compare lesson 13: the same reports from an Epic FHIR export carry this text as `valueString`.
+
+### 20. Two exports with the same file names hide unmapped terms
+
+- **Provenance**: two C-CDA folders imported into one record whose files share names. Every Epic portal download names its files `DOC0001.XML` onwards, so any two hospitals do.
+- **Data type**: Observation, Procedure and MedicationStatement terms awaiting a standard code.
+- **Symptom**: `concepts_to_review` returned nothing (or a handful) while over a hundred records carried the `concept-unmapped` tag, and `map_concept` answered "no records" for terms the import report listed.
+- **Cause**: a C-CDA record does not store its hospital. The review finds it through the stored source file with the same file name as the record's `meta.source`; with two stored files of that name from different hospitals it gave up and skipped the record.
+- **What to do**: after importing a second C-CDA folder, compare the number of terms `concepts_to_review` lists with the count of records tagged `concept-unmapped`. A large gap means records are being skipped.
+- **Status**: fixed in code while the source file is still at the path it was imported from (`sourceResolver` in `src/concepts-cli.ts` picks the stored file with the same content). Open when the file has moved or the review runs where that path does not exist (the gateway container, a chat app): those records are skipped as before. Storing the hospital, or the file's hash, on each record would close it.
+
+### 21. One download bundle, several people
+
+- **Provenance**: a zip of portal downloads collected by a family (one folder per person, each with two hospitals' C-CDA folders and PDFs).
+- **Data type**: all.
+- **Symptom**: none at import: GA would have loaded both people into one record without complaint.
+- **Cause**: `ga import` attaches every document to the install's one patient; it compares the name only to log a difference.
+- **What to do**: before importing, read `recordTarget` (name and birth year) in every document of every folder and confirm one person per folder. Give each person their own GA install (docs/operations.md, "A second person"), and import each folder into the right one by checking the install's address in `.ga/config.json` first.
+- **Status**: worked around (procedure). Open in code: an import whose patient name and birth date both differ from the record's could refuse.
+
+### 22. A hospital's "full record" PDF is mostly what the portal export already gave
+
+- **Provenance**: Epic release-of-information PDF ("full record", hundreds to thousands of pages, one block per encounter with sections such as Clinical Notes, Labs, Imaging, Medication Administrations, Flowsheets, Messages), imported after the same hospital's portal C-CDA. Seen at one hospital.
+- **Data type**: lab Observation, DiagnosticReport, DocumentReference notes, vital-sign Observation, MedicationAdministration, Communication.
+- **Symptom**: none if imported blindly: thousands of duplicate records. Measured on a 631-page record: all 36 lab values, 20 of 21 imaging entries and 24 of 41 notes were already stored or were preliminary copies; what was new was 1 imaging report, 13 doses given, 15 notes (14 of them telephone notes), 71 portal messages and about 150 nursing vital signs.
+- **Cause**: the PDF prints the whole chart, including every preliminary and in-process version of a result, the same message under several encounters, and per-visit copies of the medication, problem and allergy lists.
+- **What to do**: never extract such a PDF page by page. Take its text (`pdftotext -layout`), split it by encounter and section, parse each section by its own layout, and build a manifest before writing anything: per kind, how many were found, how many are already stored, how many are repeats, how many would be created. Compare each candidate with the stored record (labs by test, value and the collected-to-resulted days, because the portal export dates some results by when they were resulted; vitals by kind, minute and value; notes and report text by their lines). Reconcile each parser against a raw count of the rows in the text before importing: a table header printed in a variant form ("Action / Reason", "Dose / Rate", "Route / Site") silently hides its rows. Leave out administrative sections (visit information, document lists, communication tracking, treatment team) and sections that repeat stored lists (medication list, orders, ED timeline, after-visit summary). Show the manifest to the person, take a backup, then import in one call.
+- **Status**: worked around (procedure; the scripts used are kept with the person's source files, not in GA). Open in code: GA has no reader for this layout.
+
+### 23. Table cells must be split on spacing, not at fixed columns
+
+- **Provenance**: text of an Epic release-of-information PDF taken with `pdftotext -layout`.
+- **Data type**: lab Observation from a component table; any value read from a table.
+- **Symptom**: three lab values that were not in the record, each a single digit, each with a reference range missing its first digit (a range printed "22 - 30" read as "2 - 30").
+- **Cause**: one page printed the table one character to the left of its header, so cutting each line at the header's column positions split the range and moved its first digit into the value column in place of the real value. The real values were already stored.
+- **What to do**: split a table line on runs of two or more spaces and assign each cell to the nearest column; require every row to have its flag cell; check each value's shape (a number, a comparator and a number, or a known word) and reject the row otherwise. Treat any "new" value from a source the record already covers as a parsing error until shown otherwise: here the duplicate check found the mistake, because a wrong value does not match the stored one.
+- **Status**: worked around (in the scripts). The mistake was caught before any import.
+
+### 24. An import that turns out incomplete is undone by restoring, not patched
+
+- **Provenance**: any PDF imported through `ga_import` (a file is imported once; GA has no delete).
+- **Data type**: all records of that import.
+- **Symptom**: after an import, a corrected parser found 4 more medication administrations in the same PDF; a second import of the file is refused.
+- **Cause**: see lesson 22 (a table header variant).
+- **What to do**: take a backup immediately before every PDF import (`docker compose run --rm -e RUN_ONCE=1 ga-backup`). If the import proves wrong or incomplete, restore that backup (docs/operations.md, "Restore"; also empty the stored-files volume before unpacking it and flush the FHIR server's cache, `docker compose exec redis redis-cli -a medplum FLUSHALL`, while the server is stopped), check the counts are back, and import again.
+- **Status**: worked around (procedure).
+
+### 25. Scanned pages: one text engine is not enough
+
+- **Provenance**: a hospital's archive of an older record system printed as page images (seen: a "patient section" PDF from a hospital's previous record system, scans at about 195 dpi), read with Apple Vision and Tesseract.
+- **Data type**: DocumentReference notes (ED visit notes, discharge summaries, clinic visits), DiagnosticReport (an ECG).
+- **Symptom**: Apple Vision read the first digit of one temperature wrongly (a 3 as a 5), put a spurious leading 1 on another, turned a dense line into nonsense, and dropped three lines from the middle of a paragraph without any sign; Tesseract on the whole page merged the side column into the body text and clipped the first digit of values next to a table border (a temperature and a respiratory rate each lost their leading digit).
+- **Cause**: small print, two-column pages and table borders; each engine fails differently, and neither reports low confidence.
+- **What to do**: (1) such a PDF prints each document twice, once in small print and once in large print: take the text from the large-print copy and keep the other as a check, never import both. (2) Read each column of a page separately with Tesseract and use that as the text; use Apple Vision and the other copy as second readings. (3) Compare line by line in both directions (lines one reading lacks; numbers one reading lacks) and read every line without a second reading from the page image yourself. (4) Replace every vital-sign table by your own reading of the image: table borders defeat both engines. (5) A table that cannot be read reliably (a discharge medication table with wrapped cells) is left out with a line saying so, never stored half right. (6) Remove account numbers, the patient's address and billing lines from the note text; leave out consent forms, privacy notices and printed education handouts.
+- **Status**: worked around (procedure; scripts kept with the person's source files).
+
+### 26. Check that a verification query really filters
+
+- **Provenance**: any import, at the step "check that every detail can be retrieved" (section 7).
+- **Data type**: notes, messages and report text found through `notes_search`.
+- **Symptom**: a search for a word from a newly imported note "found" rows, so the import was reported searchable; the rows were only the newest notes.
+- **Cause**: the tool's parameter is `text`; a call with another name (`query`) is not refused, it returns the newest rows unfiltered.
+- **What to do**: verify with a word that occurs only in the new record and confirm the returned row is that record (its date and kind), not merely that rows came back.
+- **Status**: worked around (procedure). Open in code: an unknown parameter could be refused.
+
