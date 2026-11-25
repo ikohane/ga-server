@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 import { afterImport } from './concept-auto.ts';
 import { defaultConfigPath, GaError, getClient, loadConfig } from './config.ts';
 import { detectKind, DOCUMENT_EXT, importAny } from './import.ts';
@@ -10,9 +11,19 @@ import { setup } from './setup.ts';
 import { shareCommand } from './share/cli.ts';
 import { smartCommand } from './smart/cli.ts';
 
+// A second install on this computer runs on its own port: a re-run of ga setup must go back to it, never to the default port (another person's record).
+function writtenBaseUrl(): string | undefined {
+  try {
+    return (JSON.parse(readFileSync(defaultConfigPath(), 'utf8')) as { baseUrl?: string }).baseUrl || undefined;
+  } catch {
+    return undefined; // first run
+  }
+}
+
 try {
   if (process.argv[2] === 'setup') {
-    const cfg = await setup();
+    // ga setup [fhir-base-url]: the address given, else the one this install's config already has, else the default (port 8103).
+    const cfg = await setup(process.argv[3] || writtenBaseUrl());
     console.log(`GA ready. Patient/${cfg.patientId}`);
     console.log(cfg.terminologyLookup === false
       ? 'Code lookup is off: term names stay on this machine.'
