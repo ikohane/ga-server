@@ -265,6 +265,31 @@ function buildLanes() {
     { name: data.labs.length ? '' : 'Labs', row: `${data.restLabs.length} other tests`, h: 16, draw: laneLabTicks },
     ...data.wearables.map((w, i) => ({ name: i ? '' : 'Measurements', row: w.label, h: 34, draw: wearable(w) })),
   ];
+  // The dates again above a long section: the axis at the top scrolls out of view on a record with many rows. A section (a named
+  // lane and the unnamed rows under it) gets one when it is tall and the last axis is far above it.
+  const out = [];
+  let since = 0; // height drawn since the last axis
+  for (let i = 0; i < lanes.length; i++) {
+    if (lanes[i].name) {
+      let h = 0;
+      for (let j = i; j < lanes.length && (j === i || !lanes[j].name); j++) h += lanes[j].h + 2;
+      if (h >= DATES_SECTION && since >= DATES_APART) { out.push({ name: '', h: 26, draw: laneDates }); since = 0; }
+    }
+    out.push(lanes[i]);
+    since += lanes[i].h + (lanes[i].name ? 12 : 2);
+  }
+  lanes = out;
+}
+const DATES_SECTION = 150, DATES_APART = 250; // px: how tall a section, and how far below the last axis, before the dates are repeated
+function laneDates(y, h) {
+  const a = GUTTER, b = S.left + S.width, base = y + h - 2, put = placer();
+  for (const t of ticks(S)) {
+    const x = Math.round(X(t.t)) + 0.5;
+    if (x < a - 1 || x > b + 1) continue;
+    line(x, t.major ? base - 20 : t.unit === 'month' ? base - 9 : base - 5, x, base, t.major ? K.mid : K.pale);
+    if (t.label) put(t.label, x + 3, t.major ? base - 12 : base - 2, t.major ? K.ink : K.mid, { size: t.major ? 11 : 10 });
+  }
+  line(a, base + 0.5, b, base + 0.5, K.pale);
 }
 
 // ---- the axis: a true-scale strip, then ticks at their true positions (their spacing is the scale)
