@@ -1,6 +1,7 @@
 import type { Resource } from '@medplum/fhirtypes';
 import { expect, test } from 'vitest';
 import { LINK_ONLY, makeDetails, say } from '../src/ui/detail.ts';
+import { geneticTest } from '../src/identity.ts';
 import { seriesKey } from '../src/ui/timeline.ts';
 
 const P = { reference: 'Patient/p' };
@@ -103,3 +104,17 @@ test('every record is reachable from "All records", whatever its type', () => {
   for (const r of all) expect(reached, `${r.resourceType}/${r.id}`).toContain(`${r.resourceType}/${r.id}`);
   expect(flat(detail({ ref: 'AllergyIntolerance/a1' }))).toMatch('Rash');
 });
+
+test('genetic test results have their own kind in "All records"', () => {
+  const lab = (id: string, text: string, value: string): Resource =>
+    ({ resourceType: 'Observation', id, status: 'final', subject: { reference: 'Patient/p' }, category: [{ coding: [{ code: 'laboratory' }] }], code: { text }, valueString: value, effectiveDateTime: '2023-02-01' }) as Resource;
+  const d = makeDetails([lab('g1', 'Clinical Exome Sequence Analysis, result', 'Negative'), lab('g2', 'Exome sequencing: copy number variants (CNV)', 'Not performed'), lab('l1', 'Urine colour', 'Yellow'),
+    { resourceType: 'DiagnosticReport', id: 'r1', status: 'final', subject: { reference: 'Patient/p' }, category: [{ coding: [{ code: 'GE' }] }], code: { text: 'Panel 12' }, effectiveDateTime: '2023-02-01' } as Resource]);
+  const kinds = Object.fromEntries((d({ list: 'index' })!.sections[0] as unknown as { rows: { v: string }[][] }).rows.map((r) => [r[0].v, r[1]]));
+  expect(kinds).toMatchObject({ 'Genetic tests': '2', 'Genetic test reports': '1', 'Lab tests': '1' });
+  expect(JSON.stringify(d({ list: 'Genetic tests' }))).toMatch(/Exome sequencing: copy number variants/);
+  expect(geneticTest({ code: { text: 'Fishing injury' } })).toBe(false); // whole words only
+  expect(geneticTest({ code: { text: 'Hemoglobin' } })).toBe(false);
+  expect(geneticTest({ code: { text: 'Chromosomal microarray' } })).toBe(true);
+});
+

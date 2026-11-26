@@ -3,7 +3,7 @@
 // plain label and place, the rest are listed as they are (never codes, ids or addresses). The form follows the kind of value:
 // numbers over time are a chart and a table, text is read as text, a visit lists what was recorded at it.
 import type { DiagnosticReport, DocumentReference, Encounter, ImagingStudy, MedicationRequest, MedicationStatement, Observation, Resource } from '@medplum/fhirtypes';
-import { cardiacStudy, hasTag } from '../identity.ts';
+import { cardiacStudy, geneticTest, hasTag } from '../identity.ts';
 import { highLow } from '../labs.ts';
 import { noteText } from '../notes.ts';
 import { day, drugKey, drugName, encounterKind, encounterLabel, hasCat, seriesKey, text, titled, type Row } from './timeline.ts';
@@ -66,7 +66,7 @@ const KIND: Record<string, string> = {
 const ENC = { inpatient: 'Inpatient stay', emergency: 'Emergency visit', procedure: 'Day procedure', visit: 'Visit', hospital: 'Hospital outpatient visit', contact: 'Contact (no visit)' };
 const isLabPanel = (d: DiagnosticReport) => !cardiacStudy(d) && hasCat(d, /^lab/i) && !hasCat(d, /^(path|pathology|cyt|micro)/i);
 const obsKind = (o: Observation): string => (hasTag(o, 'src-apple-health') ? 'Home measurement' : hasCat(o, /^study-finding$/) ? 'Study finding'
-  : cardiacStudy(o) ? (cardiacStudy(o) === 'echo' ? 'Echo measurement' : 'ECG measurement') : hasCat(o, /^vital-signs$/) ? 'Vital sign' : hasCat(o, /^laboratory$/) ? 'Lab result' : hasCat(o, /^survey$/) ? 'Assessment'
+  : cardiacStudy(o) ? (cardiacStudy(o) === 'echo' ? 'Echo measurement' : 'ECG measurement') : hasCat(o, /^vital-signs$/) ? 'Vital sign' : geneticTest(o) ? 'Genetic result' : hasCat(o, /^laboratory$/) ? 'Lab result' : hasCat(o, /^survey$/) ? 'Assessment'
   : hasCat(o, /^(exam|smartdata)$/) ? 'Exam finding' : hasCat(o, /^social-history$/) ? 'Social history' : 'Observation');
 export function kindOf(r: Resource): string {
   if (r.resourceType === 'Encounter') return ENC[encounterKind(r)];
@@ -123,11 +123,11 @@ export function makeDetails(all: Resource[]): (q: Query) => Detail | undefined {
   };
   const cell = (o: Observation): Cell => { const v = valueOf(o) ?? ''; return highLow(o) ? { v: `${v} (${highLow(o)})`, alert: true } : v; };
   const group = (r: Resource): string => {
-    if (r.resourceType === 'Observation') return ({ 'Lab result': 'Lab tests', 'Vital sign': 'Vital signs (clinic)', 'Home measurement': 'Home measurements (Apple Health)', Assessment: 'Assessments',
+    if (r.resourceType === 'Observation') return ({ 'Lab result': 'Lab tests', 'Genetic result': 'Genetic tests', 'Vital sign': 'Vital signs (clinic)', 'Home measurement': 'Home measurements (Apple Health)', Assessment: 'Assessments',
       'Exam finding': 'Exam findings', 'Social history': 'Social history', 'Echo measurement': 'Echo and ECG measurements', 'ECG measurement': 'Echo and ECG measurements', 'Study finding': 'Study findings' } as Record<string, string>)[obsKind(r)] ?? 'Other observations';
     if (r.resourceType === 'Condition') return hasCat(r, /^problem-list-item$/) ? 'Problems' : 'Diagnoses at visits';
     if (r.resourceType === 'DocumentReference') return hasCat(r, /^clinical-note$/) ? 'Notes' : hasCat(r, /^summary-document$/) ? 'Encounter summary documents' : 'Stored files';
-    if (r.resourceType === 'DiagnosticReport') return isLabPanel(r) ? 'Lab panels' : 'Reports';
+    if (r.resourceType === 'DiagnosticReport') return geneticTest(r) ? 'Genetic test reports' : isLabPanel(r) ? 'Lab panels' : 'Reports';
     return ({ Encounter: 'Encounters', MedicationRequest: 'Medications', MedicationStatement: 'Medications', MedicationDispense: 'Pharmacy fills', Procedure: 'Procedures', ImagingStudy: 'Imaging studies',
       Immunization: 'Immunizations', AllergyIntolerance: 'Allergies', CarePlan: 'Care plans and goals', Goal: 'Care plans and goals', CareTeam: 'Care team', ServiceRequest: 'Orders', Specimen: 'Specimens',
       FamilyMemberHistory: 'Family history', Communication: 'Messages', QuestionnaireResponse: 'Questionnaires', Coverage: 'Insurance' } as Record<string, string>)[r.resourceType] ?? words(r.resourceType);
