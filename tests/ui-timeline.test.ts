@@ -80,3 +80,37 @@ test('buildTimeline: pairs doubled records, keeps echo measurements out of labs,
   expect(t.left).toMatchObject({ 'encounter summary documents': 1, 'hospital observations without a date (exam findings)': 1, 'second encounter records of a day procedure (the surgery log)': 1 });
   expect(t.min).toBe('2014-04-30');
 });
+
+test('buildTimeline: a child\'s growth measures get lanes; systolic and diastolic filed apart are one reading', () => {
+  const vital = (id: string, code: string, text: string, value: number, unit: string, when: string): Resource =>
+    ({ resourceType: 'Observation', id, status: 'final', category: cat('vital-signs'), code: { coding: [{ system: 'http://loinc.org', code }], text }, valueQuantity: { value, unit, code: unit }, effectiveDateTime: when }) as Resource;
+  const t = buildTimeline([
+    vital('h1', '8302-2', 'Body height', 97.2, 'cm', '2024-09-10T16:11:00Z'),
+    vital('h2', '8302-2', 'Body height', 40, '[in_i]', '2025-03-10T16:11:00Z'),
+    vital('c1', '8287-5', 'Head Occipital-frontal circumference by Tape measure', 47, 'cm', '2023-01-05T15:00:00Z'),
+    vital('c2', '8289-1', 'Head Occipital-frontal circumference Percentile', 60, '%', '2023-01-05T15:00:00Z'),
+    vital('b1', '59576-9', 'Body mass index (BMI) [Percentile] Per age and sex', 42, '%', '2024-09-10T16:11:00Z'),
+    vital('s1', '8480-6', 'Systolic blood pressure', 98, 'mm[Hg]', '2024-09-10T16:11:00Z'),
+    vital('d1', '8462-4', 'Diastolic blood pressure', 61, 'mm[Hg]', '2024-09-10T16:11:00Z'),
+    vital('s2', '8480-6', 'Systolic blood pressure', 101, 'mm[Hg]', '2025-06-01T10:00:00Z'), // no diastolic at that instant
+    { resourceType: 'Observation', id: 'p1', status: 'final', category: cat('vital-signs'), code: { text: 'Blood pressure' }, effectiveDateTime: '2024-09-10T16:11:00Z',
+      component: [{ code: { coding: [{ system: 'http://loinc.org', code: '8480-6' }] }, valueQuantity: { value: 98 } }, { code: { coding: [{ system: 'http://loinc.org', code: '8462-4' }] }, valueQuantity: { value: 61 } }] } as Resource,
+  ], '2026-11-23');
+  const lane = (k: string) => t.wearables.find((w) => w.key === k)?.clinic.map((p) => [p[1], p[2]]);
+  expect(lane('height')).toEqual([[97.2, undefined], [101.6, undefined]]); // inches converted
+  expect(lane('head')).toEqual([[47, undefined]]); // the percentile is not a circumference
+  expect(lane('bmiPct')).toEqual([[42, undefined]]);
+  expect(lane('bp')).toEqual([[98, 61]]); // the pair repeats the record that has both parts: once
+  expect(t.left).toMatchObject({ 'clinic blood pressures with only one of systolic and diastolic': 1 });
+});
+  const z = (k: string) => child.wearables.find((w) => w.key === k);
+  expect(z('heightZ')?.computed).toMatch(/computed by GA/);
+  expect(z('heightZ')?.clinic.map((p) => p[3])).toEqual(['h1']); // a click opens the reading it was computed from
+  expect(z('weightZ')?.clinic[0][1]).toBeGreaterThan(-1);
+  expect(z('weightZ')?.clinic[0][1]).toBeLessThan(1);
+});
+  const wz = typo.wearables.find((w) => w.key === 'weightZ');
+  expect(wz?.clinic.map((p) => p[3])).toEqual(['w1']);
+  expect(wz?.doubted).toMatchObject([{ id: 'w2', why: expect.stringMatching(/more than 4 standard deviations/) }]);
+  expect(typo.wearables.find((w) => w.key === 'weight')?.clinic).toHaveLength(2);
+});

@@ -52,7 +52,9 @@ function prepare(d) {
       // A reading with one value arrives with null in the second place (JSON has no undefined): null, like undefined, means no second value.
       const pts = w.points.map((p) => [toDay(p[0]), p[1], p[2]]), clinic = w.clinic.map((p) => [toDay(p[0]), p[1], p[2], p[3]]);
       const vals = [...pts, ...clinic].flatMap((p) => (p[2] == null ? [p[1]] : [p[1], p[2]])).sort((a, b) => a - b);
-      const q = (f) => vals[Math.min(vals.length - 1, Math.floor(f * vals.length))];
+      // Of n values the scale leaves out the top and bottom 1 in 100, and with fewer than 100 still the single highest: one
+      // mistyped reading (a weight ten times too large) must not flatten the whole lane. A value beyond the scale is drawn at its edge.
+      const q = (f) => vals[Math.min(vals.length - 1, Math.floor(f * (vals.length - 1)))];
       return { ...w, pts, clinic, lo: w.draw === 'bars' ? 0 : q(0.01), hi: q(0.99) };
     }),
   };

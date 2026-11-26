@@ -248,6 +248,10 @@ export function buildTimeline(all: Resource[], today: string): Timeline {
   const otherLabs: string[] = [];
   const W: Record<string, Wearable> = {
     weight: { key: 'weight', label: 'Weight', unit: 'kg', draw: 'line', points: [], clinic: [] },
+    // Growth measures of a child's record: clinic readings only.
+    height: { key: 'height', label: 'Height', unit: 'cm', draw: 'line', points: [], clinic: [] },
+    head: { key: 'head', label: 'Head circumference', unit: 'cm', draw: 'line', points: [], clinic: [] },
+    bmiPct: { key: 'bmiPct', label: 'BMI percentile', unit: '%', draw: 'line', points: [], clinic: [] },
     bp: { key: 'bp', label: 'Blood pressure', unit: 'mmHg', draw: 'range', points: [], clinic: [] },
     rhr: { key: 'rhr', label: 'Resting heart rate', unit: '/min', draw: 'line', points: [], clinic: [] },
     steps: { key: 'steps', label: 'Steps per day', unit: '', draw: 'bars', points: [], clinic: [] },
@@ -261,6 +265,12 @@ export function buildTimeline(all: Resource[], today: string): Timeline {
     const part = (codes: string[], re: RegExp) => o.component?.find((c) => codes.includes(loinc(c.code) ?? '') || re.test(text(c.code) ?? ''))?.valueQuantity?.value;
     const s = part(['8480-6'], /systolic/i), d = part(['8462-4'], /diastolic/i);
     return s !== undefined && d !== undefined ? [s, d] : undefined;
+  };
+  // A source that files systolic and diastolic pressure as two records of one instant (Epic C-CDA): paired after the loop.
+  const halves = new Map<string, { s?: number; d?: number; id: string }>();
+  const length = (o: Observation, v: number): number | undefined => {
+    const u = (o.valueQuantity?.code ?? o.valueQuantity?.unit ?? '').toLowerCase();
+    return u === 'cm' ? v : u === '[in_i]' || u === 'in' || u === 'inch' || u === 'inches' ? Math.round(v * 25.4) / 10 : u === 'm' ? Math.round(v * 1000) / 10 : undefined;
   };
   for (const o of of<Observation>('Observation')) {
     const t = o.effectiveDateTime ?? o.effectivePeriod?.start;
@@ -290,6 +300,19 @@ export function buildTimeline(all: Resource[], today: string): Timeline {
         else if (u === '[lb_av]' || u === 'lb' || u === 'lbs') W.weight.clinic.push([t, Math.round(v * 4.5359237) / 10, undefined, o.id ?? '']);
         else skip('clinic weights in a unit the page does not convert');
       }
+      else if (v !== undefined && (code === '8480-6' || code === '8462-4' || /^(systolic|diastolic) blood pressure$/i.test(name))) {
+        const h = halves.get(t) ?? halves.set(t, { id: o.id ?? '' }).get(t)!;
+        if (code === '8480-6' || /^systolic/i.test(name)) h.s = v; else h.d = v;
+      }
+      else if (v !== undefined && (code === '8302-2' || code === '8306-3' || /^(body )?height$/i.test(name))) {
+        const cm = length(o, v);
+        if (cm === undefined) skip('clinic heights in a unit the page does not convert'); else W.height.clinic.push([t, cm, undefined, o.id ?? '']);
+      }
+      else if (v !== undefined && (code === '9843-4' || code === '8287-5' || (/head.*circumference/i.test(name) && !/percentile/i.test(name)))) {
+        const cm = length(o, v);
+        if (cm === undefined) skip('clinic head circumferences in a unit the page does not convert'); else W.head.clinic.push([t, cm, undefined, o.id ?? '']);
+      }
+      else if (v !== undefined && (code === '59576-9' || /^(body mass index|bmi).*percentile/i.test(name))) W.bmiPct.clinic.push([t, v, undefined, o.id ?? '']);
       else skip('clinic vital signs not drawn yet (pulse, temperature, monitoring during procedures)');
       continue;
     }
@@ -299,6 +322,12 @@ export function buildTimeline(all: Resource[], today: string): Timeline {
     const s = labs.get(key) ?? labs.set(key, { key, label: titled(name || 'Lab result'), ...keyLab(o), unit: o.valueQuantity?.unit, points: [] }).get(key)!;
     const r = o.referenceRange?.[0];
     s.points.push([t, v, r?.low?.value ?? null, r?.high?.value ?? null, highLow(o) ?? '', o.id ?? '']);
+  }
+  // Both halves at one instant are one reading, unless a record with both parts already gave that reading.
+  const whole = new Set(W.bp.clinic.map((p) => `${p[0]}|${p[1]}|${p[2]}`));
+  for (const [t, h] of halves) {
+    if (h.s === undefined || h.d === undefined) skip('clinic blood pressures with only one of systolic and diastolic');
+    else if (!whole.has(`${t}|${h.s}|${h.d}`)) W.bp.clinic.push([t, h.s, h.d, h.id]);
   }
   const bySeries = [...labs.values()].map((s) => ({ ...s, points: s.points.sort((a, b) => a[0].localeCompare(b[0])) })).sort((a, b) => b.points.length - a.points.length);
   const wearables = Object.values(W).filter((w) => w.points.length || w.clinic.length)
