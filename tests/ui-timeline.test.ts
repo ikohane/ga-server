@@ -110,7 +110,8 @@ test('buildTimeline: a child\'s growth measures get lanes; systolic and diastoli
   expect(z('heightZ')?.clinic.map((p) => p[3])).toEqual(['h1']); // a click opens the reading it was computed from
   expect(z('weightZ')?.clinic[0][1]).toBeGreaterThan(-1);
   expect(z('weightZ')?.clinic[0][1]).toBeLessThan(1);
-});
+  // a weight ten times too large: its z-score is set aside (a question mark on the page), the weight itself stays in its lane
+  const typo = buildTimeline([vital('w1', '29463-7', 'Body weight', 5.2, 'kg', '2020-08-01T16:00:00Z'), vital('w2', '29463-7', 'Body weight', 52, 'kg', '2020-08-05T16:00:00Z')], '2026-11-23', { gender: 'male', birthDate: '2020-05-10' });
   const wz = typo.wearables.find((w) => w.key === 'weightZ');
   expect(wz?.clinic.map((p) => p[3])).toEqual(['w1']);
   expect(wz?.doubted).toMatchObject([{ id: 'w2', why: expect.stringMatching(/more than 4 standard deviations/) }]);

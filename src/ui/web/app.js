@@ -55,7 +55,7 @@ function prepare(d) {
       // Of n values the scale leaves out the top and bottom 1 in 100, and with fewer than 100 still the single highest: one
       // mistyped reading (a weight ten times too large) must not flatten the whole lane. A value beyond the scale is drawn at its edge.
       const q = (f) => vals[Math.min(vals.length - 1, Math.floor(f * (vals.length - 1)))];
-      return { ...w, pts, clinic, lo: w.draw === 'bars' ? 0 : q(0.01), hi: q(0.99) };
+      return { ...w, pts, clinic, doubted: (w.doubted ?? []).map((p) => ({ ...p, d: toDay(p.t) })), lo: w.draw === 'bars' ? 0 : q(0.01), hi: q(0.99) };
     }),
   };
 }
@@ -233,6 +233,12 @@ function wearable(w) {
       dot(x, Y(p[1]), 3, K.ink, true);
       if (p[2] != null) dot(x, Y(p[2]), 3, K.ink, true);
       hit(x - 4, y, 8, h, { d: p[0], id: p[3], label: w.computed ? w.label : `${w.label} (clinic)`, note: w.computed, value: p[2] == null ? `${p[1]} ${w.unit}` : `${p[1]}/${p[2]} ${w.unit}` }, 'Clinic reading');
+    }
+    for (const p of w.doubted) { // a computed point set aside as a probable error: a small red question mark, at mid-lane (its value is not to be read)
+      const x = X(p.d);
+      if (!inPlot(x)) continue;
+      label('?', x, y + h / 2 + 3, K.alert, { size: 10, bold: true, align: 'center' });
+      hit(x - 4, y, 8, h, { d: p.d, id: p.id, label: `${w.label}: not shown`, note: w.computed, value: `probably an error: ${p.why}` }, 'Clinic reading');
     }
     if (latest !== undefined) {
       const m = sum[latest] / cnt[latest], text = w.draw === 'range' ? `${Math.round(m)}/${Math.round(sum2[latest] / cnt[latest])}` : w.key === 'steps' ? Math.round(m).toLocaleString() : String(Math.round(m * 10) / 10);

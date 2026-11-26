@@ -44,3 +44,25 @@ export function growthZ(measure: GrowthMeasure, sex: string | undefined, birthDa
   const day = (d: string) => Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)));
   return growthZAtAge(measure, sex, (day(date) - day(birthDate)) / 86400000, value);
 }
+
+// Screening of a series of z-scores for readings that are probably errors (a mistyped weight, a wrong unit). These rules are
+// heuristics and are expected to change; whatever they are, they live here and are described in docs/z-scores.md.
+// Today: (1) a z-score beyond 4 standard deviations either way; (2) a z-score that differs by 2 standard deviations or more
+// from the last accepted one, when that one is no more than a year older. A screened reading is not drawn as a value: the page
+// shows a small red question mark in its place. Nothing is removed from the record.
+export const Z_SCREEN = { maxAbs: 4, maxJump: 2, jumpDays: 365 };
+export type ZPoint = { t: string; z: number };
+// For each point, in the order given (oldest first): undefined when it stands, else the reason it is set aside.
+export function screenZ(points: ZPoint[], rule = Z_SCREEN): (string | undefined)[] {
+  const day = (t: string) => Date.UTC(Number(t.slice(0, 4)), Number(t.slice(5, 7)) - 1, Number(t.slice(8, 10))) / 86400000;
+  let last: ZPoint | undefined;
+  return points.map((p) => {
+    if (Math.abs(p.z) > rule.maxAbs) return `more than ${rule.maxAbs} standard deviations from the reference (z ${p.z})`;
+    if (last && day(p.t) - day(last.t) <= rule.jumpDays && Math.abs(p.z - last.z) >= rule.maxJump) {
+      return `a change of ${Math.round(Math.abs(p.z - last.z) * 100) / 100} standard deviations within a year of the reading before it (z ${last.z} on ${last.t.slice(0, 10)}, then ${p.z})`;
+    }
+    last = p;
+    return undefined;
+  });
+}
+

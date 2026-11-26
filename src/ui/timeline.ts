@@ -6,7 +6,7 @@ import { conceptMatch, highLow, searchAll } from '../labs.ts';
 import { concepts } from '../concepts.ts';
 import { noteText } from '../notes.ts';
 import { loadSchedule } from '../vaccines.ts';
-import { growthZ } from '../growth.ts';
+import { growthZ, screenZ } from '../growth.ts';
 
 export type Row = [string, string];
 export type Ev = { id?: string; t: string; end?: string; label: string; sub?: string; kind?: string; rows?: Row[]; also?: string[]; text?: string; ref?: string; flags?: string[] };
@@ -15,6 +15,7 @@ export type Course = { label: string; current: boolean; t: string; end: string; 
 export type LabSeries = { key: string; label: string; concept?: string; rank?: number; unit?: string; points: [string, number, number | null, number | null, 'high' | 'low' | '', string][] };
 const GROWTH_NOTE = 'computed by GA from the clinic reading: WHO growth standards under 2 years, CDC 2000 growth charts from 2 to 20';
 export type Wearable = { key: string; label: string; unit: string; draw: 'line' | 'bars' | 'range'; series?: string; computed?: string; // computed: GA worked the points out; how
+  doubted?: { t: string; id: string; why: string }[]; // computed points set aside as probable errors: drawn as a question mark, not as a value
   points: [string, number, number?][]; clinic: [string, number, number | undefined, string][] };
 export type Timeline = {
   today: string; min: string; max: string;
@@ -337,10 +338,14 @@ export function buildTimeline(all: Resource[], today: string, person: { gender?:
   }
   // Growth z-scores: one for each clinic weight and height that has a reference at that age (birth to 20 years).
   for (const [from, to, measure] of [[W.weight, W.weightZ, 'weight'], [W.height, W.heightZ, 'height']] as const) {
-    for (const p of from.clinic) {
+    const zs: [string, number, undefined, string][] = [];
+    for (const p of [...from.clinic].sort((a, b) => a[0].localeCompare(b[0]))) {
       const g = growthZ(measure, person.gender, person.birthDate, p[0], p[1]);
-      if (g) to.clinic.push([p[0], Math.round(g.z * 100) / 100, undefined, p[3]]);
+      if (g) zs.push([p[0], Math.round(g.z * 100) / 100, undefined, p[3]]);
     }
+    // Probable errors (docs/z-scores.md) are set aside, not drawn as values.
+    const why = screenZ(zs.map((p) => ({ t: p[0], z: p[1] })));
+    zs.forEach((p, i) => { if (why[i]) (to.doubted ??= []).push({ t: p[0], id: p[3], why: why[i] as string }); else to.clinic.push(p); });
   }
   const bySeries = [...labs.values()].map((s) => ({ ...s, points: s.points.sort((a, b) => a[0].localeCompare(b[0])) })).sort((a, b) => b.points.length - a.points.length);
   const wearables = Object.values(W).filter((w) => w.points.length || w.clinic.length)

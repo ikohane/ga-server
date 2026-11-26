@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { growthZ, growthZAtAge } from '../src/growth.ts';
+import { growthZ, growthZAtAge, screenZ } from '../src/growth.ts';
 
 // Cases from the validation files of the CDC's growth-chart programs (CDC-DNPAO/CDCAnthro: output of the CDC SAS program and of WHO Anthro): no patient data.
 test('CDC 2000, 2 to 20 years: weight-for-age and height-for-age z as the CDC SAS program gives them', () => {
@@ -44,3 +44,20 @@ test('growthZ: age from the dates as written; no answer without sex or birth dat
   expect(growthZ('height', 'male', '1990-01-01', '2020-01-01', 180)).toBeUndefined();
   expect(growthZ('weight', 'male', '2020-01-01', '2023-01-01', 0)).toBeUndefined();
 });
+
+test('screenZ: beyond 4 SD, or 2 SD from the last accepted reading within a year, is set aside', () => {
+  const why = screenZ([
+    { t: '2021-03-03', z: 0.1 },
+    { t: '2021-03-07', z: 31.5 }, // beyond 4
+    { t: '2021-03-18', z: 0.2 },   // compared with 0.1, not with the reading set aside
+    { t: '2021-08-01', z: 2.3 },   // 2.1 from 0.2 within a year
+    { t: '2021-09-01', z: 0.4 },   // compared with 0.2
+    { t: '2023-03-01', z: 2.5 },   // 2.1 from 0.4, but more than a year later: stands
+    { t: '2023-04-01', z: -4.2 },  // beyond -4
+    { t: '2023-05-01', z: 0.5 },   // exactly 2.0 from 2.5 within a year
+  ]);
+  expect(why.map((w) => w === undefined)).toEqual([true, false, true, false, true, true, false, false]);
+  expect(why[1]).toMatch(/more than 4 standard deviations/);
+  expect(why[3]).toMatch(/a change of 2.1 standard deviations within a year/);
+});
+
