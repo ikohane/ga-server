@@ -141,7 +141,21 @@ Times: show an instant in the reader's time zone, a date as written. A UTC time 
 
 ## 8. Moving a record to another GA server
 
-The reliable way is to import the same original sources on the other server, following this guide. Keep the originals, and any converted copy made for an import, together in one folder per person so that can be done.
+There are two ways. Choose by what the other server already holds.
+
+**An exact copy (the other install will hold only this person).** Take a backup on this server and restore it on the other (docs/operations.md, "Backup" and "Restore"). It brings every record exactly as stored, including records an agent read from documents, the concept mappings, shares and portal connections. It replaces whatever record the other install holds, and both installs should run the same GA version. On a computer that already holds another person's record, restore into a second copy of the GA folder (docs/operations.md, "A second person"), never into the first.
+
+**Importing the sources again (any GA server, any version).** Import the same original sources on the other server, in the order of section 2, following this guide. So that this gives the same record and not a fresh reading of it, keep these together in one folder per person:
+
+- the originals (export folders, PDFs), untouched;
+- any converted copy made for an import (a reshaped FHIR export file);
+- for every document an agent read: the record set that was imported (the JSON list of resources passed to `ga_import`) and the name of the file it belongs to, so the other server imports the same records with one `ga_import` call per file instead of reading the document again;
+- the scripts that built those record sets and the manifest that was shown before importing (found, already stored, repeated, created), so the choices can be checked;
+- a note of the decisions made on the way: what was left out and why, and which terms were mapped to which concept (`ga concepts --agent` lists the mappings an agent made).
+
+A record set built against one server leaves out what that server already held. Import the sources in the same order on the other server, or the sets will leave gaps (a result the first server had from the portal export is not in the document's set).
+
+After importing, compare the two servers: record counts by type, `health_summary`, and one detail of each kind (section 7).
 
 `ga share export` writes a FHIR file of a share's records for a recipient. Importing that file into another GA server has not been tested; do not rely on it until someone records the result here.
 
