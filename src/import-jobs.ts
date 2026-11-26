@@ -211,7 +211,7 @@ export async function runJob(dir: string, id: string, deps: { importAny?: typeof
     }
     if (/\.zip$/i.test(j.upload)) rmSync(j.upload, { force: true }); // unzipped: the folder is enough to resume
     j = save(dir, { ...j, kind: detectKind(j.root!) });
-    if (j.kind === 'fhir-export' || j.kind === 'dicom') throw new GaError(CLI_ONLY); // inside a zip: seen only after unzipping
+    if (j.kind === 'fhir-export' || j.kind === 'dicom' || j.kind === 'questionnaire') throw new GaError(CLI_ONLY); // inside a zip: seen only after unzipping
     // A zipped Epic FHIR export reads as C-CDA (a folder) and would finish with nothing imported.
     if (j.kind === 'ccda' && statSync(j.root!).isDirectory()) {
       // macOS zips add AppleDouble copies (__MACOSX/, ._name): not files of the export.

@@ -1,16 +1,18 @@
 // notes_search: text search inside clinical notes (inline text/plain DocumentReferences), MyChart messages (Communication) and
 // report text: a DiagnosticReport's conclusion and text attachment, and the long text results hospitals file a report's body under
 // (Epic pathology: clinical history, final diagnosis, gross description, each an Observation with a text value), and a study's
-// findings (Epic echo: Observations of category study-finding that share the report's order and list their content by name).
+// findings (Epic echo: Observations of category study-finding that share the report's order and list their content by name),
+// and questionnaire answers (a QuestionnaireResponse that carries its questions: src/questionnaire).
 import type { MedplumClient } from '@medplum/core';
-import type { Communication, DiagnosticReport, DocumentReference, Observation } from '@medplum/fhirtypes';
+import type { Communication, DiagnosticReport, DocumentReference, Observation, QuestionnaireResponse } from '@medplum/fhirtypes';
 import { APPLE, TAG } from './identity.ts';
 import { collect, dateRange, fit } from './labs.ts';
+import { questionnaireText, questionnaireTitle } from './questionnaire/read.ts';
 import { NEVER_DOCS } from './share/scope.ts';
 const SCAN = 5000; // records read per type per call: a text match reads every record in the range
 const SNIP = 300;
 
-type Searched = 'DocumentReference' | 'Communication' | 'DiagnosticReport' | 'Observation';
+type Searched = 'DocumentReference' | 'Communication' | 'DiagnosticReport' | 'Observation' | 'QuestionnaireResponse';
 type NoteRow = { date?: string; kind: string; author?: string; snippet: string; type: Searched; id?: string };
 const RESULT_TEXT = 80; // a text result this long is prose (a diagnosis, a description), not a value like "Negative"
 
@@ -57,7 +59,7 @@ type Cached = { stamp: string; rows: Body[]; more: boolean };
 // Decoded rows per client and patient, in memory only. A type reloads when its (total, newest lastUpdated) stamp changes.
 const cache = new WeakMap<MedplumClient, Map<string, Cached>>();
 
-async function load<T extends DocumentReference | Communication | DiagnosticReport | Observation>(
+async function load<T extends DocumentReference | Communication | DiagnosticReport | Observation | QuestionnaireResponse>(
   client: MedplumClient, patientId: string, type: Searched, sort: string, row: (r: T) => Body | undefined, only: [string, string][] = [],
 ): Promise<Cached> {
   const subject = `Patient/${patientId}`;
@@ -82,7 +84,7 @@ export async function notesSearch(
 ): Promise<{ rows: NoteRow[]; total: number; truncated?: true; hint?: string }> {
   dateRange(new URLSearchParams(), 'date', since, until); // validates since/until
   const named = (c?: { text?: string; coding?: { display?: string }[] }) => c?.text ?? c?.coding?.find((x) => x.display)?.display;
-  const [docs, msgs, reports, results, findings] = await Promise.all([
+  const [docs, msgs, reports, results, findings, forms] = await Promise.all([
     load(client, patientId, 'DocumentReference', 'date', (d: DocumentReference) => {
       const body = noteText(d);
       if (body === undefined) return undefined;
@@ -110,6 +112,12 @@ export async function notesSearch(
       if (!body) return undefined;
       return { body, order: o.basedOn?.find((b) => b.reference)?.reference, date: (o.effectiveDateTime ?? o.issued)?.slice(0, 10), kind: `report text: findings${o.basedOn?.[0]?.display ? ` (${o.basedOn[0].display})` : ''}`, type: 'Observation', id: o.id };
     }, [['category', 'study-finding']]),
+    // Answers with their questions. An Epic export's answer sets carry no question text and are left out.
+    load(client, patientId, 'QuestionnaireResponse', 'authored', (q: QuestionnaireResponse) => {
+      const body = q.item?.some((i) => i.text || i.item?.some((x) => x.text)) ? questionnaireText(q) : undefined;
+      if (!body) return undefined;
+      return { body, date: q.authored?.slice(0, 10), kind: `questionnaire: ${questionnaireTitle(q)}`, author: q.source?.display ?? q.author?.display, type: 'QuestionnaireResponse', id: q.id };
+    }),
   ]);
   // A study's findings read as part of its report: one row, opened by the report's id. Findings with no report stay their own rows.
   const byOrder = new Map<string, Body>(reports.rows.flatMap((r): [string, Body][] => (r.order ? [[r.order, { ...r }]] : [])));
@@ -119,11 +127,11 @@ export async function notesSearch(
   const inRange = (d?: string) => (!since && !until) || (d !== undefined && (!since || d >= since) && (!until || d <= until));
   // The same text stored twice (Epic re-issues a note's id; two exports then hold it twice) is one row.
   const once = new Set<string>();
-  const rows = [...docs.rows, ...msgs.rows, ...reportRows, ...results.rows, ...loose]
+  const rows = [...docs.rows, ...msgs.rows, ...reportRows, ...results.rows, ...loose, ...forms.rows]
     .filter((r) => { const k = `${r.date}|${r.kind}|${norm(r.body)}`; return once.has(k) ? false : !!once.add(k); })
     .filter((r) => inRange(r.date) && (!text || find(norm(r.body), text) >= 0))
     .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
     .map(({ body, order: _order, ...r }) => ({ ...r, snippet: snippet(body, text) }));
-  const out = fit(rows, limit, docs.more || msgs.more || reports.more || results.more || findings.more);
+  const out = fit(rows, limit, docs.more || msgs.more || reports.more || results.more || findings.more || forms.more);
   return out.truncated ? { ...out, hint: 'more may match: narrow since/until or the text' } : out;
 }

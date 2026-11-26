@@ -3,7 +3,7 @@ import type { Extension, Identifier, Observation, Resource } from '@medplum/fhir
 import { GaError } from './config.ts';
 
 export type SourceInfo = {
-  kind: 'ccda' | 'pdf' | 'ehi' | 'apple-health' | 'apple-clinical' | 'smart' | 'fhir-export' | 'dicom'; // apple-clinical: Apple's copies of hospital records
+  kind: 'ccda' | 'pdf' | 'ehi' | 'apple-health' | 'apple-clinical' | 'smart' | 'fhir-export' | 'dicom' | 'questionnaire'; // apple-clinical: Apple's copies of hospital records
   file: string;
   org?: string; // C-CDA custodian organisation name; keys the source's ConceptMap (src/conceptmap.ts)
   date: string;
@@ -117,6 +117,7 @@ const OWN_ID: Partial<Record<SourceInfo['kind'], { name: string; ok: (system: st
   smart: { name: 'SMART', ok: (x) => x.startsWith('urn:ga-server:id:smart:') },
   'fhir-export': { name: 'FHIR export', ok: (x) => x.startsWith('urn:ga-server:id:smart:') },
   dicom: { name: 'DICOM', ok: (x) => x === 'urn:dicom:uid' },
+  questionnaire: { name: 'questionnaire', ok: (x) => x === 'urn:ga-server:id:questionnaire' },
 };
 
 export function stableIdentifier(r: Resource, s: SourceInfo, fileHash: string, patientId = '', resolve?: (ref: string) => string | undefined): Identifier {

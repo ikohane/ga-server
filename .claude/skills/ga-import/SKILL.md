@@ -12,6 +12,7 @@ Import `$ARGUMENTS` into GA. If no path was given, ask for one. The path must ex
   - Epic EHI export (folder with `EHITables/`); add `--tz <IANA zone>` if the user names the site's time zone.
   - Apple Health export (folder with `export.xml`); an `export.zip` must be unzipped first.
   - C-CDA: a folder of Epic Health Summary XML files, or one XML file.
+  - Questionnaire response (`.json` whose first line says `"resourceType": "QuestionnaireResponse"` or `"Bundle"`): `ga import <file>` with no other argument; check the folder's `.ga/config.json` belongs to the person the answers are about (docs/questionnaires.md).
   - Epic FHIR export (`.json`): ask the user for the portal's FHIR base URL; never guess; add `--fhir-base <url>`.
   - DICOM study (folder containing `DICOMDIR`).
 

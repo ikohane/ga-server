@@ -66,6 +66,7 @@ try {
         const u = URL.canParse(fhirBase) ? new URL(fhirBase) : undefined;
         if (!u || !['http:', 'https:'].includes(u.protocol) || !u.hostname) throw new GaError('--fhir-base needs an http(s) URL, e.g. https://fhir.example.org/api/FHIR/R4/');
       } else if (kind === 'dicom' && process.argv.length > 4) throw new GaError('usage: ga import <dicom-folder>');
+      else if (kind === 'questionnaire' && process.argv.length > 4) throw new GaError('usage: ga import <questionnaire-response.json>');
       else if (kind === 'apple' && process.argv.length > 4) throw new GaError('usage: ga import <apple-health-folder>');
       const cfg = loadConfig();
       const client = await getClient(cfg);

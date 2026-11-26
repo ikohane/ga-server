@@ -2,11 +2,12 @@
 // list, built from the records the page already loaded. Every field a person can read is shown: fields this file knows get a
 // plain label and place, the rest are listed as they are (never codes, ids or addresses). The form follows the kind of value:
 // numbers over time are a chart and a table, text is read as text, a visit lists what was recorded at it.
-import type { DiagnosticReport, DocumentReference, Encounter, ImagingStudy, MedicationRequest, MedicationStatement, Observation, Resource } from '@medplum/fhirtypes';
+import type { DiagnosticReport, DocumentReference, Encounter, ImagingStudy, MedicationRequest, MedicationStatement, Observation, QuestionnaireResponse, Resource } from '@medplum/fhirtypes';
 import { cardiacStudy, geneticTest, hasTag } from '../identity.ts';
 import { highLow } from '../labs.ts';
 import { noteText } from '../notes.ts';
 import { day, drugKey, drugName, encounterKind, encounterLabel, hasCat, seriesKey, text, titled, type Row } from './timeline.ts';
+import { answerRows, questionnaireTitle } from '../questionnaire/read.ts';
 
 export type Cell = string | { v: string; q?: string; alert?: true };
 export type Section = { title: string; note?: string } & (
@@ -81,12 +82,13 @@ export function nameOf(r: Resource): string {
   const n = r.resourceType === 'Encounter' ? encounterLabel(r) : r.resourceType === 'MedicationRequest' || r.resourceType === 'MedicationStatement' ? drugName(r)
     : r.resourceType === 'DocumentReference' ? text(r.type) ?? r.description ?? r.content?.[0]?.attachment?.title
     : text(a.code) ?? text(a.vaccineCode) ?? text(a.medicationCodeableConcept) ?? a.medicationReference?.display ?? a.description?.text ?? (typeof a.description === 'string' ? a.description : undefined)
-      ?? a.name ?? text(a.relationship) ?? text(a.type) ?? text([a.category ?? []].flat()[0]);
+      ?? a.name ?? text(a.relationship) ?? text(a.type) ?? text([a.category ?? []].flat()[0])
+      ?? (r.resourceType === 'QuestionnaireResponse' ? questionnaireTitle(r as QuestionnaireResponse) : undefined);
   return titled(typeof n === 'string' && n ? n : kindOf(r));
 }
 export const dateOf = (r: Resource): string | undefined => {
   const a = r as Any;
-  return a.effectiveDateTime ?? a.effectivePeriod?.start ?? a.performedDateTime ?? a.performedPeriod?.start ?? (r.resourceType === 'Coverage' ? undefined : a.period?.start) ?? a.authoredOn ?? a.occurrenceDateTime
+  return a.effectiveDateTime ?? a.effectivePeriod?.start ?? a.performedDateTime ?? a.performedPeriod?.start ?? (r.resourceType === 'Coverage' ? undefined : a.period?.start) ?? a.authoredOn ?? a.authored ?? a.occurrenceDateTime
     ?? a.occurrencePeriod?.start ?? a.started ?? a.onsetDateTime ?? a.whenHandedOver ?? a.sent ?? a.startDate ?? a.collection?.collectedDateTime ?? (typeof a.date === 'string' ? a.date : undefined) ?? a.recordedDate ?? a.issued ?? a.period?.start;
 };
 const range = (o: Observation): string => { const r = o.referenceRange?.[0]; return r?.text ?? (r?.low?.value !== undefined || r?.high?.value !== undefined ? `${r.low?.value ?? ''}–${r.high?.value ?? ''}` : ''); };
@@ -291,6 +293,22 @@ export function makeDetails(all: Resource[]): (q: Query) => Detail | undefined {
       const body = say(a.payload?.map((p: Any) => p.contentString));
       if (body) d.sections.push({ title: 'Message', type: 'text', text: body });
       drop.add('payload');
+    } else if (r.resourceType === 'QuestionnaireResponse') {
+      // What a person answered, in the order asked. Answers are the person's words, not a clinician's finding.
+      fact('Answered by', say(a.source?.display), 'source', 'item', 'questionnaire', 'authored');
+      fact('Last answer', when(a.authored));
+      const rows = answerRows(r as QuestionnaireResponse);
+      const asked = rows.filter((x) => !x.heading && x.depth <= 1 && x.question);
+      fact('Questions', `${asked.filter((x) => x.answers.length && !x.absent).length} answered, ${asked.filter((x) => x.absent).length} "don't know" or declined, ${asked.filter((x) => !x.answers.length).length} left blank`);
+      let part: { title: string; rows: Cell[][] } | undefined;
+      const flush = () => { if (part?.rows.length) table(d, part.title, part.rows, ['Question', 'Answer']); };
+      for (const x of rows) {
+        if (x.heading && x.depth === 0) { flush(); part = { title: x.question ?? 'Answers', rows: [] }; continue; }
+        part ??= { title: 'Answers', rows: [] };
+        if (x.heading) continue;
+        part.rows.push([`${x.depth > 1 ? '↳ ' : ''}${x.question ?? x.linkId}`, x.answers.length ? x.answers.join('; ') : '(no answer)']);
+      }
+      flush();
     }
     if ((r.resourceType === 'CarePlan' || r.resourceType === 'Goal') && a.text?.div) d.sections.push({ title: 'As written', type: 'text', text: plain(a.text.div) });
     for (const [k, v] of Object.entries(r)) if (!drop.has(k)) fact(LABEL[k] ?? words(k), say(v));

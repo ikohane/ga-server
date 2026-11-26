@@ -42,6 +42,8 @@ The copy has its own database and stored files (Docker volumes `ga-server-2_ga-p
 
 ## Backup
 
+The backup covers every kind of record, including questionnaire responses and their source files ([questionnaires.md](questionnaires.md)).
+
 A backup holds all of your health records: keep it encrypted, for example on a FileVault disk or in an encrypted disk image, never in an unencrypted cloud folder.
 
 Every night a backup service writes one dated folder to `./backups` (or `GA_BACKUP_DIR` in `.env`), newest 7 kept; on Linux run `mkdir -p backups` first (Docker would create it root-owned). The service is `ga-backup`: `ga-postgres.dump`, `ga-binary.tgz` (the `ga-binary` volume) and `dot-ga.tgz` (`.ga/` without `store/ga.db`). For a backup right now: `docker compose run --rm -e RUN_ONCE=1 ga-backup`.

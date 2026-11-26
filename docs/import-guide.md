@@ -49,6 +49,10 @@ Several export files of one hospital: import them **oldest first**, newest last.
 - The report's `possibleDuplicates` are mostly not duplicates (lesson 5).
 - A file without `meta.lastUpdated` gives medications, problems and allergies no source date. They read as current with nothing to judge them by; say so to the person.
 
+### Questionnaire response (`.json` holding a FHIR `QuestionnaireResponse`)
+
+`ga import <file.json>`, no other argument ([questionnaires.md](questionnaires.md)). Answers a person gave, not hospital records: import them after the hospital sources, into the GA of the person they are about (the file's birth date is checked against GA's person; a mismatch writes nothing). Answers arrive over several sittings: each later file replaces the record, so always import the newest. Check after: the report says `created: 1` (or `updated: 1`), `subjectChecked: true`, `invalid: 0`; open the response on the chronology page ("All records", "Questionnaires") and compare the count of answered questions with the sender's report.
+
 ### Apple Health export (folder with `export.xml`)
 
 `ga import <unzipped folder>`. Import the whole unzipped folder (`export.xml`, `export_cda.xml`, `clinical-records/`), not a loose `export.xml`: the clinical records are the hospital data on the phone.

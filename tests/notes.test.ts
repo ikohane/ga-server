@@ -63,7 +63,7 @@ test('notesSearch cache: unchanged stamp makes only the stamp requests; a change
   expect((await notesSearch(client, pid, { text: 'colonoscopy' })).rows.map((r) => r.id)).toEqual(['n1']);
   calls.length = 0;
   expect((await notesSearch(client, pid, { text: 'colonoscopy' })).rows.map((r) => r.id)).toEqual(['n1']);
-  expect(calls.sort()).toEqual(['Communication:stamp', 'DiagnosticReport:stamp', 'DocumentReference:stamp', 'Observation:stamp', 'Observation:stamp']);
+  expect(calls.sort()).toEqual(['Communication:stamp', 'DiagnosticReport:stamp', 'DocumentReference:stamp', 'Observation:stamp', 'Observation:stamp', 'QuestionnaireResponse:stamp']);
   by.DocumentReference.push(lu(doc('n2', 'second colonoscopy note'), '2025-06-01T00:00:00Z')); // total and lastUpdated change
   calls.length = 0;
   expect((await notesSearch(client, pid, { text: 'colonoscopy' })).rows.map((r) => r.id).sort()).toEqual(['n1', 'n2']);

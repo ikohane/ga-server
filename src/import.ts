@@ -10,8 +10,10 @@ import { importDicom } from './dicom/import.ts';
 import { importEhi } from './ehi/import.ts';
 import { isEhiExport } from './ehi/read.ts';
 import { importFhirExport } from './fhir-export/import.ts';
+import { importQuestionnaire } from './questionnaire/import.ts';
+import { isQuestionnaireFile } from './questionnaire/read.ts';
 
-export type ImportKind = 'pdf' | 'ehi' | 'apple' | 'ccda' | 'fhir-export' | 'dicom';
+export type ImportKind = 'pdf' | 'ehi' | 'apple' | 'ccda' | 'fhir-export' | 'dicom' | 'questionnaire';
 
 export const DOCUMENT_EXT = /\.(pdf|png|jpe?g|tiff?)$/i;
 
@@ -21,6 +23,7 @@ export function detectKind(path: string): ImportKind {
   if (isAppleHealthExport(path)) return 'apple';
   if (/\.zip$/i.test(path)) throw new GaError('unzip export.zip first, then: ga import <folder>');
   if (existsSync(join(path, 'DICOMDIR'))) return 'dicom';
+  if (isQuestionnaireFile(path)) return 'questionnaire';
   if (/\.json$/i.test(path)) return 'fhir-export';
   return 'ccda';
 }
@@ -32,6 +35,7 @@ export async function importAny(client: MedplumClient, cfg: GaConfig, path: stri
   if (kind === 'apple') return importAppleHealth(client, cfg, path, cfg.patientId, opts);
   if (kind === 'ehi') return importEhi(client, cfg, path, cfg.patientId, opts.tz, opts);
   if (kind === 'dicom') return importDicom(client, cfg, path, cfg.patientId);
+  if (kind === 'questionnaire') return importQuestionnaire(client, cfg, path, cfg.patientId);
   if (kind === 'fhir-export') {
     if (!opts.fhirBase) throw new GaError('usage: ga import <fhir-export.json> --fhir-base <FHIR base URL>');
     return importFhirExport(client, cfg, path, cfg.patientId, { ...opts, fhirBase: opts.fhirBase });
