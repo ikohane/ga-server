@@ -76,8 +76,8 @@ export async function serveUi(port = 8120): Promise<void> {
   let cached: { at: number; value: Promise<{ timeline: Timeline; detail: (q: Query) => Detail | undefined }> } | undefined;
   const read = (fresh: boolean) => { // one read of the record serves the timeline and every detail asked of it; reloading the page reads again after a minute
     if (!cached || (fresh && Date.now() - cached.at > 60_000)) {
-      const value = Promise.all([loadRecords(client, pid), planned(client, pid)])
-        .then(([all, plan]) => ({ timeline: { ...buildTimeline(all, new Date().toLocaleDateString('en-CA')), planned: plan }, detail: makeDetails(all) }));
+      const value = Promise.all([loadRecords(client, pid), planned(client, pid), client.readResource('Patient', pid)])
+        .then(([all, plan, patient]) => ({ timeline: { ...buildTimeline(all, new Date().toLocaleDateString('en-CA'), { gender: patient.gender, birthDate: patient.birthDate }), planned: plan }, detail: makeDetails(all) }));
       cached = { at: Date.now(), value };
       value.catch(() => { cached = undefined; });
     }

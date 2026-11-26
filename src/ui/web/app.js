@@ -232,7 +232,7 @@ function wearable(w) {
       if (!inPlot(x)) continue;
       dot(x, Y(p[1]), 3, K.ink, true);
       if (p[2] != null) dot(x, Y(p[2]), 3, K.ink, true);
-      hit(x - 4, y, 8, h, { d: p[0], id: p[3], label: `${w.label} (clinic)`, value: p[2] == null ? `${p[1]} ${w.unit}` : `${p[1]}/${p[2]} ${w.unit}` }, 'Clinic reading');
+      hit(x - 4, y, 8, h, { d: p[0], id: p[3], label: w.computed ? w.label : `${w.label} (clinic)`, note: w.computed, value: p[2] == null ? `${p[1]} ${w.unit}` : `${p[1]}/${p[2]} ${w.unit}` }, 'Clinic reading');
     }
     if (latest !== undefined) {
       const m = sum[latest] / cnt[latest], text = w.draw === 'range' ? `${Math.round(m)}/${Math.round(sum2[latest] / cnt[latest])}` : w.key === 'steps' ? Math.round(m).toLocaleString() : String(Math.round(m * 10) / 10);
@@ -337,7 +337,7 @@ function tipFor(h, x) {
   }
   if (h.kind === 'Lab') return `<b>${esc(it.series.label)}</b> <span class="${it.flag ? 'a' : ''}">${it.v} ${esc(it.series.unit ?? '')}${it.flag ? ` (${it.flag})` : ''}</span><br><span class="d">${fmt(it.d)}${it.lo != null || it.hi != null ? ` · range ${it.lo ?? ''}–${it.hi ?? ''}` : ''}</span>`;
   if (h.kind === 'Diagnosis at a visit') return `<b>${esc(it.label)}</b><br><span class="d">${fmt(it.d)} · coded at ${it.n} visit${it.n > 1 ? 's' : ''}</span>`;
-  if (h.kind === 'Clinic reading') return `<b>${esc(it.label)}</b> ${esc(it.value)}<br><span class="d">${fmt(it.d)}</span>`;
+  if (h.kind === 'Clinic reading') return `<b>${esc(it.label)}</b> ${esc(it.value)}<br><span class="d">${fmt(it.d)}${it.note ? ` · ${esc(it.note)}` : ''}</span>`;
   if (it.orders) return `<b>${esc(it.label)}</b><br><span class="d">${h.kind} · ${fmt(it.d, false)} – ${it.current ? 'now' : fmt(it.d2, false)} · ${it.orders.length} order${it.orders.length > 1 ? 's' : ''}</span>`;
   return `<b>${esc(it.label)}</b>${it.sub ? ` · ${esc(it.sub)}` : ''}<br><span class="d">${h.kind} · ${fmt(it.d)}${it.d2 && !it.orders && h.kind !== 'Problem' ? ` – ${fmt(it.d2)}` : h.kind === 'Problem' && !it.d2 ? ' – now' : ''}${it.also?.length ? ` · also recorded as ${esc(it.also.join(', '))}` : ''}</span>`;
 }

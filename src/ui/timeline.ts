@@ -6,13 +6,16 @@ import { conceptMatch, highLow, searchAll } from '../labs.ts';
 import { concepts } from '../concepts.ts';
 import { noteText } from '../notes.ts';
 import { loadSchedule } from '../vaccines.ts';
+import { growthZ } from '../growth.ts';
 
 export type Row = [string, string];
 export type Ev = { id?: string; t: string; end?: string; label: string; sub?: string; kind?: string; rows?: Row[]; also?: string[]; text?: string; ref?: string; flags?: string[] };
 export type EncounterKind = 'inpatient' | 'emergency' | 'procedure' | 'visit' | 'hospital' | 'contact';
 export type Course = { label: string; current: boolean; t: string; end: string; orders: { t: string; end: string; status?: string; text?: string }[] };
 export type LabSeries = { key: string; label: string; concept?: string; rank?: number; unit?: string; points: [string, number, number | null, number | null, 'high' | 'low' | '', string][] };
-export type Wearable = { key: string; label: string; unit: string; draw: 'line' | 'bars' | 'range'; series?: string; points: [string, number, number?][]; clinic: [string, number, number | undefined, string][] };
+const GROWTH_NOTE = 'computed by GA from the clinic reading: WHO growth standards under 2 years, CDC 2000 growth charts from 2 to 20';
+export type Wearable = { key: string; label: string; unit: string; draw: 'line' | 'bars' | 'range'; series?: string; computed?: string; // computed: GA worked the points out; how
+  points: [string, number, number?][]; clinic: [string, number, number | undefined, string][] };
 export type Timeline = {
   today: string; min: string; max: string;
   encounters: Ev[]; problems: Ev[]; diagnoses: { label: string; dates: string[] }[]; medications: Course[]; procedureDrugs: { t: string; names: string[] }[];
@@ -84,7 +87,8 @@ export const seriesKey = (o: Observation): string => {
 };
 export const drugKey = (name: string): string => (/^[^\d(]+/.exec(name)?.[0] ?? name).trim().toLowerCase().replace(/\s+(tablet|capsule|oral|topical)$/, '') || name.toLowerCase();
 
-export function buildTimeline(all: Resource[], today: string): Timeline {
+// person: the patient's sex and birth date, for a child's growth z-scores (none drawn without both).
+export function buildTimeline(all: Resource[], today: string, person: { gender?: string; birthDate?: string } = {}): Timeline {
   const of = <T extends Resource>(type: T['resourceType']) => all.filter((r): r is T => r.resourceType === type);
   const left: Record<string, number> = {};
   const skip = (why: string, n = 1) => { left[why] = (left[why] ?? 0) + n; };
@@ -249,7 +253,9 @@ export function buildTimeline(all: Resource[], today: string): Timeline {
   const W: Record<string, Wearable> = {
     weight: { key: 'weight', label: 'Weight', unit: 'kg', draw: 'line', points: [], clinic: [] },
     // Growth measures of a child's record: clinic readings only.
+    weightZ: { key: 'weightZ', label: 'Weight z-score', unit: 'SD', draw: 'line', points: [], clinic: [], computed: GROWTH_NOTE },
     height: { key: 'height', label: 'Height', unit: 'cm', draw: 'line', points: [], clinic: [] },
+    heightZ: { key: 'heightZ', label: 'Height z-score', unit: 'SD', draw: 'line', points: [], clinic: [], computed: GROWTH_NOTE },
     head: { key: 'head', label: 'Head circumference', unit: 'cm', draw: 'line', points: [], clinic: [] },
     bmiPct: { key: 'bmiPct', label: 'BMI percentile', unit: '%', draw: 'line', points: [], clinic: [] },
     bp: { key: 'bp', label: 'Blood pressure', unit: 'mmHg', draw: 'range', points: [], clinic: [] },
@@ -328,6 +334,13 @@ export function buildTimeline(all: Resource[], today: string): Timeline {
   for (const [t, h] of halves) {
     if (h.s === undefined || h.d === undefined) skip('clinic blood pressures with only one of systolic and diastolic');
     else if (!whole.has(`${t}|${h.s}|${h.d}`)) W.bp.clinic.push([t, h.s, h.d, h.id]);
+  }
+  // Growth z-scores: one for each clinic weight and height that has a reference at that age (birth to 20 years).
+  for (const [from, to, measure] of [[W.weight, W.weightZ, 'weight'], [W.height, W.heightZ, 'height']] as const) {
+    for (const p of from.clinic) {
+      const g = growthZ(measure, person.gender, person.birthDate, p[0], p[1]);
+      if (g) to.clinic.push([p[0], Math.round(g.z * 100) / 100, undefined, p[3]]);
+    }
   }
   const bySeries = [...labs.values()].map((s) => ({ ...s, points: s.points.sort((a, b) => a[0].localeCompare(b[0])) })).sort((a, b) => b.points.length - a.points.length);
   const wearables = Object.values(W).filter((w) => w.points.length || w.clinic.length)

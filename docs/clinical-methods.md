@@ -299,3 +299,16 @@ The RxNorm code of each medication that arrived since the person last looked.
 - Scores and statuses are as of a date. Epic health maintenance is as of its export date.
 - GA computes; it does not recommend. The scores' cut-offs and the guideline statuses are inputs for a conversation with a clinician, not decisions.
 - The shipped rule files (USPSTF topics, CDC schedule) are versioned snapshots. They do not update themselves when a guideline changes.
+
+## Growth z-scores (weight-for-age, height-for-age)
+
+Shown on the chronology page (`ga ui`) as two measurement lanes, one point for each clinic weight and each clinic height of a person under 20. Code: `src/growth.ts`; reference parameters: `config/growth-reference.json`. They are computed when the page is drawn and are not stored in the record.
+
+- **References**, as the CDC recommends for the United States: the WHO Child Growth Standards from birth to 24 months, the CDC 2000 growth charts from 2 to 20 years. No z-score is given past 240 months, without the person's sex and birth date, or for a sex other than male or female (the references have only those two).
+- **Method**: the LMS method. z = ((x / M)^L - 1) / (L x S), or ln(x / M) / S when L is within 0.01 of zero. WHO: the parameters of the exact day of age; for weight, a z beyond 3 or -3 is measured in units of the distance between the 2nd and 3rd standard deviations, as WHO specifies. CDC: the parameters interpolated linearly between the charts' half-month ages; age in months is days / 30.4375.
+- **Age** is counted in whole days from the birth date to the date of the reading as written.
+- **Height under 2 years** is taken as recorded. The WHO standard under 24 months is for recumbent length; a standing height recorded for a child under 2 is not adjusted (WHO adds 0.7 cm), because the record does not say how it was measured.
+- **Source of the parameters and of the validation cases**: the CDC's `CDCAnthro` R package (github.com/CDC-DNPAO/CDCAnthro, version 0.6.1), whose tables come from cdc.gov/growthcharts (percentile data files) and the WHO standards. Only the published parameters were taken, not the package's code.
+- **Validation**: against that package's test files, GA gives the CDC SAS program's weight-for-age and height-for-age z to four decimals on 10,000 cases each, and WHO Anthro's length-for-age z (two decimals) on 6,708 cases; its WHO weight-for-age z differs from WHO Anthro's rounded value by at most 0.007. `tests/growth.test.ts` keeps a sample of those cases.
+- **A wrong reading gives a wrong z**: a mistyped weight (ten times too large) yields an absurd z-score. The page draws it at the edge of the lane; the reading itself is what needs correcting, at its source.
+

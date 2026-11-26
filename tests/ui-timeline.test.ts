@@ -102,7 +102,9 @@ test('buildTimeline: a child\'s growth measures get lanes; systolic and diastoli
   expect(lane('bmiPct')).toEqual([[42, undefined]]);
   expect(lane('bp')).toEqual([[98, 61]]); // the pair repeats the record that has both parts: once
   expect(t.left).toMatchObject({ 'clinic blood pressures with only one of systolic and diastolic': 1 });
-});
+  // z-scores only when the person's sex and birth date are given: one per weight and height that has a reference at that age
+  expect(t.wearables.some((w) => w.key === 'heightZ')).toBe(false);
+  const child = buildTimeline([vital('h1', '8302-2', 'Body height', 97.2, 'cm', '2024-09-10T16:11:00Z'), vital('w1', '29463-7', 'Body weight', 16.5, 'kg', '2024-09-10T16:11:00Z')], '2026-11-23', { gender: 'male', birthDate: '2020-05-10' });
   const z = (k: string) => child.wearables.find((w) => w.key === k);
   expect(z('heightZ')?.computed).toMatch(/computed by GA/);
   expect(z('heightZ')?.clinic.map((p) => p[3])).toEqual(['h1']); // a click opens the reading it was computed from
