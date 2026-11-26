@@ -53,3 +53,22 @@ test('a detail is asked for one thing at a time, only by GET, only under this ho
   const status = await new Promise<number>((ok) => http.get({ host: '127.0.0.1', port, path: '/api/timeline', headers: { ...cookie, host: 'evil.example' } }, (r) => { r.resume(); ok(r.statusCode ?? 0); }));
   expect(status).toBe(403);
 });
+
+test('two pages on one computer: each keeps its own cookie name, so one does not lock the other out', async () => {
+  const deps = { timeline: async () => ({}) as never, detail: async () => undefined, hosts: ['127.0.0.1:1'] };
+  const call = async (h: ReturnType<typeof uiHandler>, url: string, cookie?: string) => {
+    let status = 0; const headers: Record<string, string> = {};
+    const res = { writeHead: (s: number, hd: Record<string, string>) => { status = s; Object.assign(headers, hd); }, end: () => {} };
+    await h({ url, method: 'GET', headers: { host: '127.0.0.1:1', ...(cookie && { cookie }) } } as never, res as never);
+    return { status, headers };
+  };
+  const a = uiHandler({ ...deps, secret: 'secret-of-the-first-page-0001', cookie: 'ga_ui_8220' });
+  const b = uiHandler({ ...deps, secret: 'secret-of-the-second-page-002', cookie: 'ga_ui_8320' });
+  expect((await call(a, '/?k=secret-of-the-first-page-0001')).headers['Set-Cookie']).toMatch(/^ga_ui_8220=/);
+  // the browser sends both cookies to both ports: each page reads only its own
+  const both = 'ga_ui_8220=secret-of-the-first-page-0001; ga_ui_8320=secret-of-the-second-page-002';
+  expect((await call(a, '/api/timeline', both)).status).toBe(200);
+  expect((await call(b, '/api/timeline', both)).status).toBe(200);
+  expect((await call(a, '/api/timeline', 'ga_ui_8320=secret-of-the-second-page-002')).status).toBe(403);
+});
+

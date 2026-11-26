@@ -20,13 +20,17 @@ const HEADERS = {
 const same = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 const KINDS = ['ref', 'series', 'course', 'dx', 'list'];
-export type UiDeps = { timeline: () => Promise<Timeline>; detail: (q: Query) => Promise<Detail | undefined>; secret: string; hosts: string[] };
+// cookie: the name of this run's cookie. A browser keeps cookies per host, not per port, so two pages on one computer (two people's
+// installs, on two ports) must not share a name: the second would replace the first one's secret and lock its page out.
+export type UiDeps = { timeline: () => Promise<Timeline>; detail: (q: Query) => Promise<Detail | undefined>; secret: string; hosts: string[]; cookie?: string };
 
 export function uiHandler(deps: UiDeps): (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void> {
   const send = (res: http.ServerResponse, status: number, body: string, type = 'text/plain; charset=utf-8', extra: Record<string, string> = {}) => {
     res.writeHead(status, { ...HEADERS, 'Content-Type': type, ...extra });
     res.end(body);
   };
+  const name = deps.cookie ?? 'ga_ui';
+  const mine = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`);
   return async (req, res) => {
     try {
       if (!deps.hosts.includes(req.headers.host ?? '')) return send(res, 403, 'forbidden');
@@ -35,9 +39,9 @@ export function uiHandler(deps: UiDeps): (req: http.IncomingMessage, res: http.S
       const key = url.searchParams.get('k');
       if (url.pathname === '/' && key) { // the printed link: keep the secret out of the address bar and history
         if (!same(key, deps.secret)) return send(res, 403, 'forbidden');
-        return send(res, 303, '', undefined, { Location: '/', 'Set-Cookie': `ga_ui=${deps.secret}; HttpOnly; SameSite=Strict; Path=/` });
+        return send(res, 303, '', undefined, { Location: '/', 'Set-Cookie': `${name}=${deps.secret}; HttpOnly; SameSite=Strict; Path=/` });
       }
-      const cookie = /(?:^|;\s*)ga_ui=([^;]+)/.exec(req.headers.cookie ?? '')?.[1] ?? '';
+      const cookie = mine.exec(req.headers.cookie ?? '')?.[1] ?? '';
       if (!same(cookie, deps.secret)) return send(res, 403, 'Open the link that `ga ui` printed.');
       const file = FILES[url.pathname];
       if (file) return send(res, 200, readFileSync(join(WEB, file), 'utf8'), MIME[file.split('.').pop()!]);
@@ -83,7 +87,7 @@ export async function serveUi(port = 8120): Promise<void> {
     }
     return cached.value;
   };
-  const server = http.createServer(uiHandler({ timeline: async () => (await read(true)).timeline, detail: async (q) => (await read(false)).detail(q), secret, hosts: [`127.0.0.1:${port}`, `localhost:${port}`] }));
+  const server = http.createServer(uiHandler({ timeline: async () => (await read(true)).timeline, detail: async (q) => (await read(false)).detail(q), secret, cookie: `ga_ui_${port}`, hosts: [`127.0.0.1:${port}`, `localhost:${port}`] }));
   await new Promise<void>((ok, fail) => server.once('error', fail).listen(port, '127.0.0.1', ok));
   console.log(`GA chronology: http://127.0.0.1:${port}/?k=${secret}\nOnly this computer can open it. Ctrl-C stops it.`);
 }
