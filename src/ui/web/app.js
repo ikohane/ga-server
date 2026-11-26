@@ -194,6 +194,7 @@ function laneLabTicks(y) {
   for (const d of data.labTicks) { const x = X(d); if (inPlot(x)) line(x, y + 4, x, y + 10, K.pale); }
   hit(GUTTER, y, S.width, 16, {}, 'labs');
 }
+const CLINIC_DOT = 1.5; // radius of a ringed clinic reading: small, so a crowded month of readings stays legible
 function wearable(w) {
   return (y, h) => {
     const x0 = Math.ceil(GUTTER), n = Math.floor(S.left + S.width) - x0 + 1;
@@ -230,8 +231,8 @@ function wearable(w) {
     for (const p of w.clinic) { // clinic readings: ringed, never merged with home readings
       const x = X(p[0]);
       if (!inPlot(x)) continue;
-      dot(x, Y(p[1]), 3, K.ink, true);
-      if (p[2] != null) dot(x, Y(p[2]), 3, K.ink, true);
+      dot(x, Y(p[1]), CLINIC_DOT, K.ink, true);
+      if (p[2] != null) dot(x, Y(p[2]), CLINIC_DOT, K.ink, true);
       hit(x - 4, y, 8, h, { d: p[0], id: p[3], label: w.computed ? w.label : `${w.label} (clinic)`, note: w.computed, value: p[2] == null ? `${p[1]} ${w.unit}` : `${p[1]}/${p[2]} ${w.unit}` }, 'Clinic reading');
     }
     for (const p of w.doubted) { // a computed point set aside as a probable error: a small red question mark, at mid-lane (its value is not to be read)
